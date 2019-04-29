@@ -1,0 +1,455 @@
+---
+title: "Avocados - Sales Dashboard"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: spacelab
+    orientation: rows
+    vertical_layout: fill
+    social: menu
+    source_code: embed
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+library(flexdashboard)
+```
+
+```{r global, include=FALSE}
+###### Load in packages #########
+library(shiny)
+library(forecast)
+library(dplyr)
+library(readr)
+library(timeSeries)
+library(ggplot2)
+library(mgcv)
+library(knitr)
+library(lubridate)
+library(plotly)
+library(plyr)
+library(gridExtra)
+library(data.table)
+library(grid)
+library(ggthemes)
+library(psych)
+library(DT)
+
+
+####### load Data #######
+#setwd("/Users/austi/Documents/School/Spring 2019/Advanced Data Analytics/Project/Data/")
+avocado <- read.csv('avocadoFullState.csv')
+############### Data Clensing and adding new varibles ################
+######### Change year to factor variable ########
+avocado$year <- factor(avocado$year)
+
+############## Change Date to date type #######
+avocado$Date <- as.Date(avocado$Date)
+
+
+######### Delete index column (X) #########
+avocado$X <- NULL
+
+####### Reorder Date Varaible #######
+avocado <- avocado[order(avocado$Date), ]
+
+##### Create Weekday and month variable ######
+avocado$WeekDay <- factor(weekdays(avocado$Date))
+
+avocado$Month <- factor(months(avocado$Date))
+
+##### New State Coloumn #####
+unique(avocado$region)
+
+avocado$State <- ifelse(avocado$region == "MiamiFtLauderdale" | avocado$region == "Orlando" | avocado$region == "Tampa" | avocado$region == "Jacksonville", "Florida", 
+                ifelse(avocado$region == "Boise", "Idaho", 
+                ifelse(avocado$region == "Chicago", "Illinois", 
+                ifelse(avocado$region == "Louisville", "Kentucky", 
+                ifelse(avocado$region == "NewOrleansMobile", "Louisiana", 
+                ifelse(avocado$region == "BaltimoreWashington", "Maryland", 
+                ifelse(avocado$region == "Boston", "Massachusetts", 
+                ifelse(avocado$region == "Detroit" | avocado$region == "GrandRapids" | avocado$region =="GreatLakes", "Michigan",
+                ifelse(avocado$region == "California" | avocado$region == "LosAngeles" |avocado$region =="Sacramento" |avocado$region=="SanDiego" | avocado$region =="SanFrancisco", "California", 
+              ifelse(avocado$region=="Denver", "Colorado", 
+              ifelse(avocado$region=="HartfordSpringfield", "Connecticut", 
+              ifelse(avocado$region =="StLouis", "Missouri", 
+              ifelse(avocado$region=="LasVegas" , "Nevada",
+              ifelse(avocado$region=="Seattle" |avocado$region=="Spokane", "Washington", 
+              ifelse(avocado$region=="SouthCarolina", "South Carolina", 
+              ifelse(avocado$region=="HarrisburgScranton" | avocado$region=="Philadelphia" |avocado$region=="Pittsburgh", "Pennsylvania", 
+              ifelse(avocado$region=="Portland", "Oregon", 
+              ifelse(avocado$region=="CincinnatiDayton" |avocado$region=="Columbus", "Ohio", 
+              ifelse(avocado$region == "PhoenixTucson", "Arizona",
+              ifelse(avocado$region == "Nashville", "Tennessee",
+              ifelse(avocado$region == "DallasFtWorth"|avocado$region =="Houston", "Texas",
+              ifelse(avocado$region == "Atlanta", "Georgia",
+              ifelse(avocado$region == "Indianapolis","Indiana",
+              ifelse(avocado$region == "RichmondNorfolk"|avocado$region =="Roanoke", "Virginia",
+              ifelse(avocado$region == "WestTexNewMexico","New Mexico",
+              ifelse(avocado$region == "Albany"|avocado$region =="BuffaloRochester"|avocado$region =="NewYork"|avocado$region =="Syracuse","New York",
+              ifelse(avocado$region == "Charlotte"|avocado$region =="RaleighGreensboro","North Carolina", "Other")))))))))))))))))))))))))))
+
+
+
+
+
+avocado$NewRegion <- ifelse(avocado$State == 'New York'| avocado$State == "Massachusetts" | avocado$State == 'Connecticut' | avocado$State == 'Pennsylvania' | avocado$region == 'NorthernNewEngland' | avocado$region == 'Northeast', 'North-East', 
+                            
+ifelse(avocado$State == 'Georgia' | avocado$State == 'Maryland' | avocado$State == 'North Carolina' | avocado$State == 'Texas' | avocado$State == 'Florida' | avocado$State == 'Kentucky' | avocado$State == 'Tennessee' | avocado$State == 'Louisiana' | avocado$State == 'Virginia' | avocado$State == 'South Carolina'  | avocado$region == 'SouthCentral' | avocado$region == 'Southeast' | avocado$region == 'Midsouth', 'South', 
+       
+ifelse(avocado$State == 'Idaho' | avocado$State == 'California' | avocado$State == 'Colorado' | avocado$State == 'Arizona' | avocado$State == 'Washington' | avocado$State == 'New Mexico' | avocado$State == 'Oregon' | avocado$State == 'Nevada' | avocado$region == 'West' , 'West', 
+       
+ifelse(avocado$State == 'Illinois' | avocado$State == 'Ohio' | avocado$State == 'Michigan' | avocado$State == 'Indiana' | avocado$State == 'Missouri' | avocado$region == 'Plains', 'Mid-West', 'TotalUS'))))
+
+avocado$AveragePrice <- as.numeric(avocado$AveragePrice)
+avocado$Total.Volume <- as.numeric(avocado$Total.Volume)
+
+```
+
+
+Page 1: Time Series
+===================================== 
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+```{r}
+
+fluidPage(
+  ##### Give a Title #####
+  titlePanel("Avocados: Time Series"),
+    
+  ## Month Dropdown ##
+  #selectInput("month", label = "Month:", 
+              #choices = unique(avocado$Month), selected = "January"),
+  
+  #Create region choice drop down 
+  selectInput("region", label = "Region:", 
+               choices = unique(avocado$region), selected = "Albany"),
+             
+  #Choice Drop Down            
+    selectInput("type", label = "Type:", 
+      choices = unique(avocado$type), selected = "organic"), 
+  
+    #Variable Drop Down            
+    selectInput("Variable", label = "Variable:", 
+      choices = colnames(avocado)[2:10], selected = "AveragePrice"), 
+  
+  #Time 
+  sliderInput("time_adjust", label = "Time:", 
+              min = min(avocado$Date), max = max(avocado$Date), value = c(min(avocado$Date), max = max(avocado$Date)), step = 1), 
+  
+  # Color option only for Overview TS
+    selectInput("chartColor", label = "Chart Color", 
+                choices = c("red", "blue", "black", "green", "orange", "purple"), selected = "black")
+  
+  
+  ##Retail Margin 
+  #sliderInput("Retail_Margin_adjust", label = "Retail Margin", 
+      #        min = .01, max = .99, value = .15, step = .01), 
+  
+  ##Marginal Cost 
+  #sliderInput("Marginal_Cost_adjust", label = "Marginal Cost", 
+              #min = .01, max = max(avocado$AveragePrice), value = min(avocado$AveragePrice), step = .01)
+)
+  
+```
+
+Row {.tabset .tabset-fade}
+-----------------------------------------------------------------------
+
+
+### Time Series
+
+```{r}
+renderPlot({
+  
+ avocadoTS <- ts(avocado[avocado$region == input$region & avocado$type == input$type, input$Variable], start = c(year(input$time_adjust[1]), month(input$time_adjust[1])) , end = c(year(input$time_adjust[2]), month(input$time_adjust[2])) , frequency = 48)
+  fit <- stl(avocadoTS, s.window = "period")
+  plot(fit, col = input$chartColor)
+
+})
+```
+
+### Time Series
+
+```{r}
+renderPlot({
+               
+ggplot(data = avocado[avocado$region == input$region & avocado$type == input$type & avocado$Date >= input$time_adjust[1] & avocado$Date <= input$time_adjust[2],], aes_string(x = "Date", y = input$Variable, fill = input$Variable))+
+    geom_line(color = input$chartColor, size = 1.65)+
+    stat_smooth(
+  color = "#FC4E07", fill = "#FC4E07",
+  method = "loess")
+
+})
+
+```
+
+Page 2: Data Summary
+===================================== 
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+```{r}
+
+fluidPage(
+  ##### Give a Title #####
+  titlePanel("Avocados: Data Summary"),
+    
+  ## Month Dropdown ##
+  #selectInput("month", label = "Month:", 
+              #choices = unique(avocado$Month), selected = "January"),
+  
+  #Create region choice drop down 
+  selectInput("region2", label = "Region:", 
+               choices = unique(avocado$region), selected = "Albany"),
+             
+  #Choice Drop Down            
+    selectInput("type2", label = "Type:", 
+      choices = unique(avocado$type), selected = "organic"), 
+  
+    #Variable Drop Down            
+    selectInput("Variable2", label = "Variable:", 
+      choices = colnames(avocado)[2:10], selected = "AveragePrice"), 
+  
+  #Time 
+  sliderInput("time_adjust2", label = "Time:", 
+              min = min(avocado$Date), max = max(avocado$Date), value = c(min(avocado$Date), max = max(avocado$Date)), step = 1), 
+  
+  # Color option only for Overview TS
+    selectInput("chartColor2", label = "Chart Color", 
+                choices = c("Red", "Blue", "Black", "Green", "Orange", "Purple"), selected = "red")
+  
+  
+  ##Retail Margin 
+  #sliderInput("Retail_Margin_adjust", label = "Retail Margin", 
+      #        min = .01, max = .99, value = .15, step = .01), 
+  
+  ##Marginal Cost 
+  #sliderInput("Marginal_Cost_adjust", label = "Marginal Cost", 
+              #min = .01, max = max(avocado$AveragePrice), value = min(avocado$AveragePrice), step = .01)
+)
+```
+
+Row {.tabset .tabset-fade}
+-----------------------------------------------------------------------
+
+### Bar Charts  
+
+```{r}
+renderPlot({
+if(input$Variable2 == "AveragePrice"){
+tableAvo1  <- aggregate(. ~ type , avocado[,c('type', input$Variable2)], mean)
+tableAvo2 <- aggregate(. ~ year , avocado[,c('year', input$Variable2)], mean)
+tableAvo3 <- aggregate(. ~ Month , avocado[,c('Month', input$Variable2)], mean)
+tableAvo4 <- aggregate(. ~ State , avocado[,c('State', input$Variable2)], mean)
+tableAvo5 <- aggregate(. ~ NewRegion , avocado[,c('NewRegion', input$Variable2)], mean)
+
+
+#par(mfrow=c(2,3))
+layout(matrix(c(1,1,1,0,2,2,2,1,1,1,0,2,2,2,5,5,5,0,3,3,3,5,5,5,0,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,0,0,0,0,0,0,0),nrow=7,ncol=7,byrow=TRUE)#, widths=c(2,2,1), heights = c(1,2)
+       )
+barplot(tableAvo1[,2], col =input$chartColor2,  names.arg=unique(unique(tableAvo1[,1])), main = "Type",cex.names=1.5, cex.main = 2)
+barplot(tableAvo2[,2], col =input$chartColor2,  names.arg=unique(unique(tableAvo2[,1])), main = "Year",cex.names=1.5, cex.main=2)
+barplot(tableAvo3[,2], col =input$chartColor2,  names.arg=unique(unique(tableAvo3[,1])), main = "Month",cex.names = 1.5, cex.main=2, las=2 )
+barplot(tableAvo4[,2], col =input$chartColor2,  names.arg=unique(unique(tableAvo4[,1])), main = "State",cex.names=1.5, las=2, cex.main=2)
+barplot(tableAvo5[,2], col =input$chartColor2,  names.arg=unique(unique(tableAvo5[,1])), main = "Region",cex.names=1.5,cex.main=2 )
+}
+  
+else{
+  tableAvo1  <- aggregate(. ~ type , avocado[,c('type', input$Variable2)], sum)
+tableAvo2 <- aggregate(. ~ year , avocado[,c('year', input$Variable2)], sum)
+tableAvo3 <- aggregate(. ~ Month , avocado[,c('Month', input$Variable2)], sum)
+tableAvo4 <- aggregate(. ~ State , avocado[,c('State', input$Variable2)], sum)
+tableAvo5 <- aggregate(. ~  NewRegion, avocado[,c('NewRegion', input$Variable2)], sum)
+
+par(mfrow=c(5,1))
+
+
+barplot(tableAvo1[,2], col = input$chartColor2,  names.arg=unique(unique(tableAvo1[,1])), main = "Type", border = "white" )
+barplot(tableAvo2[,2], col = input$chartColor2,  names.arg=unique(unique(tableAvo2[,1])), main = "Year" )
+barplot(tableAvo3[,2], col = input$chartColor2,  names.arg=unique(unique(tableAvo3[,1])), main = "Month" )
+barplot(tableAvo4[,2], col = input$chartColor2, border='white',  names.arg=unique(unique(tableAvo4[,1])), main = "State")
+barplot(tableAvo5[,2], col =input$chartColor2,  names.arg=unique(unique(tableAvo5[,1])), main = "Region", border="white" )
+  
+}}
+)
+```
+
+### Variable Distributions 
+
+```{r}
+renderPlot({
+x1<-ggplot(data = avocado[avocado$region == input$region2 & avocado$type == input$type2 & avocado$Date >= input$time_adjust2[1] & avocado$Date <= input$time_adjust2[2],], aes_string(x = input$Variable2))
+
+x2<-x1+geom_histogram(color = "gray90",fill = input$chartColor2,  size=1)+theme_economist(dkpanel = TRUE)
+x2
+
+x3<-ggplot(data = avocado[avocado$region == input$region2 & avocado$type == input$type2 & avocado$Date >= input$time_adjust2[1] & avocado$Date <= input$time_adjust2[2],], aes_string(x = input$Variable2), stat_bin())
+
+x4<-x3+geom_density(adjust = 1/8, color = input$chartColor2,fill="gray90", size=2) +theme_economist(dkpanel = TRUE)
+
+
+ x5<-ggplot(data = avocado[avocado$region == input$region2 & avocado$type == input$type2 & avocado$Date >= input$time_adjust2[1] & avocado$Date <= input$time_adjust2[2],], aes_string(x = input$Variable2, y=input$Variable2))
+
+ x6<-x5+geom_boxplot(fill="gray90",color = input$chartColor2, size=1)+theme_economist(dkpanel = TRUE) 
+ 
+x7<-ggplot(data = avocado[avocado$region == input$region2 & avocado$type == input$type2 & avocado$Date >= input$time_adjust2[1] & avocado$Date <= input$time_adjust2[2],], aes_string(x = "Date", y=input$Variable2)) +geom_point(color = "gray90",fill=input$chartColor2, size=4, shape=21)+theme_economist(dkpanel = TRUE) 
+
+grid.arrange(x2,x4,x6,x7,ncol=2, nrow=2,top = textGrob(input$Variable2, gp=gpar(fontsize=20)))
+})
+```
+
+### Summary Statistics 
+
+```{r}
+
+renderDataTable({
+datatable(describe(avocado), class = 'cell-border stripe')
+})
+
+```
+
+
+
+Page 3: Price Optimization
+===================================== 
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+```{r}
+
+fluidPage(
+  ##### Give a Title #####
+  titlePanel("Avocados: Price Optimization"),
+    
+  ## Month Dropdown ##
+  selectInput("monthOpt", label = "Month:", 
+              choices = unique(avocado$Month), selected = "January"),
+  
+  #Create region choice drop down 
+  selectInput("regionOpt", label = "Region:", 
+               choices = unique(avocado$region), selected = "Albany"),
+             
+  #Choice Drop Down            
+    selectInput("typeOpt", label = "Type:", 
+      choices = unique(avocado$type), selected = "organic"), 
+  
+  # Year Drop Down 
+  selectInput("yearOpt", label = "Year:",
+              choices = unique(avocado$year), selected = 2017),
+  
+  ##Retail Margin 
+  sliderInput("Retail_Margin_adjust", label = "Retail Margin", 
+              min = .01, max = .99, value = .15, step = .01), 
+  
+  ##Marginal Cost 
+  sliderInput("Marginal_Cost_adjust", label = "Marginal Cost", 
+              min = .01, max = max(avocado$AveragePrice), value = min(avocado$AveragePrice), step = .01)
+)
+  
+```
+
+Row {.tabset .tabset-fade}
+-----------------------------------------------------------------------
+
+### Price/Demand Correlation 
+
+```{r}
+renderPlot({
+plot(log(avocado[avocado$region == input$regionOpt & avocado$type == input$typeOpt,]$AveragePrice), log(avocado[avocado$region == input$regionOpt & avocado$type == input$typeOpt,]$Total.Volume), xlab = "Price", ylab = "Demand", pch = 16, col = "Blue") + 
+    abline(lm(log(Total.Volume) ~ log(AveragePrice), data = avocado[avocado$region == input$regionOpt & avocado$type == input$typeOpt,]), col = 'red')
+
+
+})
+
+
+```
+
+
+
+### Price Optimization 
+
+```{r}
+
+library(plotly)
+
+renderPlot({
+
+avocado_pft = function(price, Month, model, rm, mc) {
+  pred_DF = data.frame(AveragePrice = price, Month = Month)
+  logQ = predict(model,newdata=pred_DF)
+  Q = exp(logQ+sigma(model)^2/2)
+  profit = Q *(price*(1-rm)-mc)
+ 
+  return(list(Qdaily=Q,profit=profit, price = price))
+}
+
+profitMax <- function(model, mc, r){
+  elaticity <- abs(as.numeric(model$coefficients['log(AveragePrice)']))
+  price <- (-(elaticity) * mc) / ((1 - r) * (1 - elaticity))
+  return(round(price, 2))
+}
+
+
+demand_model <- lm(log(Total.Volume) ~ log(AveragePrice) + Month , data = avocado[avocado$region == input$regionOpt & avocado$type == input$typeOpt & avocado$year == input$yearOpt,])
+Price = seq(from = .5, to = 3, by =.01)
+pft = rep(0,length(Price))
+j = 1;
+for (p in Price) {
+  pft[j] = avocado_pft(p, input$monthOpt, demand_model, input$Retail_Margin_adjust, input$Marginal_Cost_adjust)$profit
+  j = j + 1
+}  
+
+df <- data.frame(Price=Price,
+                 Profit=pft) 
+
+ggplot(data = df, aes(Price, Profit)) +
+    theme_bw()+
+    geom_line(color = "red", size = 1.25)+
+    geom_point(data = df, aes(Price[which.max(Profit)], max(Profit)), color = "Blue", size = 3.8)+
+    geom_text(aes(label=ifelse(Price == Price[which.max(Profit)],Price,'')),hjust=3, vjust=3, size = 5)
+
+})
+```
+
+Page 4: Tableau Visualizations
+===================================== 
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+```{r}
+plot_names<-c("Organic_vs_Conventional_By_State","Average_Price_By_Region","Median_Price_By_Region","Total_sum_by_PLU_and_Region", "Average_Monthly_Price", "Average_Price_By_State", "Median_Price_By_State", "Sum_of_Average_Price_By_State")
+
+fluidPage(
+  ##### Give a Title #####
+  titlePanel("Avocados: Tableau Visualizations"),
+    
+  ## Month Dropdown ##
+  selectInput("plot_name", label = "Visualization:", 
+              choices = plot_names, selected = plot_names[1]))
+  
+```
+
+Row {.tabset .tabset-fade}
+-----------------------------------------------------------------------
+
+### Heat Maps
+
+```{r}
+
+urls<-c(Organic_vs_Conventional_By_State = "https://public.tableau.com/views/Organicvs_Conventionalperstate/Sheet2?:showVizHome=no&:embed=true",
+        Average_Price_By_Region = "https://public.tableau.com/shared/TMYW9JH58?:display_count=yes:showVizHome=no&:embed=true",
+        Median_Price_By_Region = "https://public.tableau.com/views/Avocado_Region_MedianPrice/Region_MedianPrice?:embed=true&:display_count=yes:showVizHome=no",
+        Total_sum_by_PLU_and_Region = "https://public.tableau.com/views/Avocado_Region_SumTTLbyPLU/Region_SumTTL_PLU?:embed=true&:display_count=yes:showVizHome=no",
+        Average_Monthly_Price = "https://public.tableau.com/views/Avocado_Monthly_AVGPrice/AVGPrice_Month?:embed=true&:display_count=yes:showVizHome=no",
+        Average_Price_By_State ="https://public.tableau.com/shared/GD6655D3X?:display_count=yes:embed=true:showVizHome=no",
+        Median_Price_By_State = "https://public.tableau.com/views/Avocadeo_State_MedianPrice/State_MedianPrice?:embed=true&:display_count=yes:showVizHome=no",
+        Sum_of_Average_Price_By_State = "https://public.tableau.com/shared/CXYP9XH6X?:display_count=yes:embed=true:showVizHome=no")
+renderUI({
+tags$iframe(style="height:600px; width:100%; scrolling=yes", src=urls[input$plot_name])
+})
+
+```
+
